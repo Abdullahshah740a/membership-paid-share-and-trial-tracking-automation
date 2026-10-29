@@ -1,0 +1,239 @@
+{
+  "name": "Membership Paid Share and Trial Tracking Automation",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "EXAMPLE_UUID_932C4D98F3",
+      "name": "Run Now (Manual)",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                1
+              ],
+              "triggerAtHour": 6
+            }
+          ]
+        }
+      },
+      "id": "EXAMPLE_UUID_6153C1C50B",
+      "name": "Weekly (Mon 06:00)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Membership counts from GHL contacts (authoritative).\n// Paid   = 'Membership Due Collected' custom field is set (money actually collected).\n// Free   = 'Proximity Fellow Expiration Date' is in the future (active 90-day trial) AND not paid.\nconst TOKEN = 'EXAMPLE_SECRET_5525C066F5';   // GHL token (update on rotation)\nconst LOC   = 'EXAMPLE_RESOURCE_ID_5271A38AF4';\nconst PROX  = 'EXAMPLE_RESOURCE_ID_B726703DBA';   // Proximity Fellow Expiration Date\nconst DUE   = 'EXAMPLE_RESOURCE_ID_1A89D13CEB';   // Membership Due Collected\n\nlet page = 1, all = [];\nwhile (page <= 40) {\n  const resp = await this.helpers.httpRequest({\n    method: 'POST',\n    url: 'https://services.leadconnectorhq.com/contacts/search',\n    headers: { 'Authorization': 'Bearer ' + TOKEN, 'Version': '2021-07-28', 'Content-Type': 'application/json' },\n    body: { locationId: LOC, page, pageLimit: 100 },\n    json: true\n  });\n  const c = (resp && resp.contacts) || [];\n  all = all.concat(c);\n  if (c.length < 100) break;\n  page++;\n  await new Promise(r => setTimeout(r, 400));   // pace requests\n}\n\nfunction cf(c){ const m={}; for (const f of (c.customFields || c.customField || [])) m[f.id]=f.value; return m; }\nfunction toISO(v){\n  if (v === undefined || v === null || v === '') return '';\n  if (typeof v === 'number' || /^\\d+$/.test(String(v))) { try { return new Date(Number(v)).toISOString().slice(0,10); } catch(e){ return ''; } }\n  return String(v).slice(0,10);\n}\n\nconst today = new Date().toISOString().slice(0,10);\nlet paid = 0, free = 0;\nfor (const c of all) {\n  const m = cf(c);\n  if (m[DUE]) { paid++; continue; }          // paid = dues collected\n  const exp = toISO(m[PROX]);\n  if (exp && exp >= today) free++;            // active 90-day free trial, not yet paid\n}\nconst total = paid + free;\nconst pct = total ? Math.round((paid / total) * 1000) / 10 : 0;\nreturn [{ json: {\n  'Snapshot Date': today,\n  'Snapshot Key': 'current',\n  'Total Members': total,\n  'Paid Members': paid,\n  'Free Members': free,\n  'Paid Conversion %': pct\n}}];"
+      },
+      "id": "EXAMPLE_UUID_EF6D74EA9D",
+      "name": "Count Paid (dues) + Free (active Proximity)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        272,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "base": {
+          "__rl": true,
+          "value": "EXAMPLE_RESOURCE_ID_3584EBCAFD",
+          "mode": "list"
+        },
+        "table": {
+          "__rl": true,
+          "value": "EXAMPLE_RESOURCE_ID_58F9C6AD35",
+          "mode": "list"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [
+            "Snapshot Key"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "Snapshot Date",
+              "displayName": "Snapshot Date",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Total Members",
+              "displayName": "Total Members",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Paid Members",
+              "displayName": "Paid Members",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Free Members",
+              "displayName": "Free Members",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Paid Conversion %",
+              "displayName": "Paid Conversion %",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Snapshot Key",
+              "displayName": "Snapshot Key",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Free Cohort (ever Proximity)",
+              "displayName": "Free Cohort (ever Proximity)",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Cohort Upgraded to Paid",
+              "displayName": "Cohort Upgraded to Paid",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Cohort Conversion %",
+              "displayName": "Cohort Conversion %",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "typecast": true
+        }
+      },
+      "id": "EXAMPLE_UUID_D00C0C972A",
+      "name": "Upsert Membership Conversion",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        528,
+        80
+      ]
+    }
+  ],
+  "connections": {
+    "Run Now (Manual)": {
+      "main": [
+        [
+          {
+            "node": "Count Paid (dues) + Free (active Proximity)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Weekly (Mon 06:00)": {
+      "main": [
+        [
+          {
+            "node": "Count Paid (dues) + Free (active Proximity)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Count Paid (dues) + Free (active Proximity)": {
+      "main": [
+        [
+          {
+            "node": "Upsert Membership Conversion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  }
+}
